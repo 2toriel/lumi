@@ -147,6 +147,14 @@ function OrganizerPanel({ cake, onChanged }) {
   const [error, setError] = useState(null);
   const [info, setInfo] = useState(null);
 
+  async function parseJsonResponse(res) {
+    try {
+      return await res.json();
+    } catch {
+      throw new Error(`Unexpected server response (status ${res.status}). Check Vercel's function logs for details.`);
+    }
+  }
+
   async function handleAuth(e) {
     e.preventDefault();
     setError(null);
@@ -157,7 +165,7 @@ function OrganizerPanel({ cake, onChanged }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
       });
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!res.ok) throw new Error(data.error || 'Incorrect password.');
       setAuthed(true);
     } catch (err) {
@@ -177,7 +185,7 @@ function OrganizerPanel({ cake, onChanged }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password, ...payload }),
       });
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!res.ok) throw new Error(data.error || 'Something went wrong.');
       setInfo('Updated ✓');
       onChanged?.();
