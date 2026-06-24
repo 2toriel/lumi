@@ -1,48 +1,85 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { verifyPassword } from '@/lib/password';
 
-export async function PATCH(request, { params }) {
+const VALID_COLORS = ['coral', 'marigold', 'teal', 'violet', 'pink'];
+
+export async function POST(request, { params }) {
   const { slug } = await params;
-  const body = await request.json().catch(() => ({}));
-  const { password, unlockAt, activateNow } = body || {};
-
-  if (!password) {
-    return NextResponse.json({ error: 'Password is required.' }, { status: 400 });
-  }
-  if (!unlockAt && !activateNow) {
-    return NextResponse.json({ error: 'Nothing to update.' }, { status: 400 });
-  }
-  if (unlockAt && Number.isNaN(new Date(unlockAt).getTime())) {
-    return NextResponse.json({ error: 'unlockAt must be a valid date/time.' }, { status: 400 });
-  }
-
   const supabase = getSupabaseAdmin();
 
-  // Always re-verify server-side — never trust that an earlier /auth call
-  // alone authorizes this request, since there's no session tying them together.
-  const { data: cake } = await supabase
+  const { data: cake, error: cakeError } = await supabase
     .from('cakes')
-    .select('id, password_hash')
+    .select('id')
     .eq('slug', slug)
     .single();
 
-  if (!cake || !verifyPassword(password, cake.password_hash)) {
-    return NextResponse.json({ error: 'Incorrect password.' }, { status: 401 });
+  if (cakeError || !cake) {
+    return NextResponse.json({ error: 'Cake not found.' }, { status: 404 });
   }
 
-  const nextUnlockAt = activateNow ? new Date().toISOString() : new Date(unlockAt).toISOString();
+  let form;
+  try {
+    form = await request.formData();
+  } catch {
+    return NextResponse.json({ error: 'Expected multipart form data.' }, { status: 400 });
+  }
 
-  const { data: updated, error } = await supabase
-    .from('cakes')
-    .update({ unlock_at: nextUnlockAt })
-    .eq('id', cake.id)
-    .select('id, slug, recipient_name, unlock_at, theme')
+  const senderName = (form.get('senderName') || '').toString().trim();
+  const rawColor = (form.get('color') || '').toString();
+  const color = VALID_COLORS.includes(rawColor) ? rawColor : 'coral';
+  const messageType = (form.get('messageType') || '').toString();
+  const message = (form.get('message') || '').toString().trim();
+  const audioFile = form.get('audio');
+
+  if (!senderName) {
+    return NextResponse.json({ error: 'senderName is required.' }, { status: 400 });
+  }
+  if (!['text', 'voice'].includes(messageType)) {
+    return NextResponse.json({ error: 'messageType must be "text" or "voice".' }, { status: 400 });
+  }
+  if (messageType === 'text' && !message) {
+    return NextResponse.json({ error: 'message is required for a text wish.' }, { status: 400 });
+  }
+  if (messageType === 'voice' && !(audioFile instanceof Blob)) {
+    return NextResponse.json({ error: 'An audio recording is required for a voice wish.' }, { status: 400 });
+  }
+
+  let voiceUrl = null;
+
+  if (messageType === 'voice') {
+    const arrayBuffer = await audioFile.arrayBuffer();
+    const fileName = `${cake.id}/${Date.now()}-${Math.round(Math.random() * 1e6)}.webm`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('voice-notes')
+      .upload(fileName, Buffer.from(arrayBuffer), {
+        contentType: audioFile.type || 'audio/webm',
+      });
+
+    if (uploadError) {
+      return NextResponse.json({ error: `Upload failed: ${uploadError.message}` }, { status: 500 });
+    }
+
+    const { data: pub } = supabase.storage.from('voice-notes').getPublicUrl(fileName);
+    voiceUrl = pub.publicUrl;
+  }
+
+  const { data: candle, error: insertError } = await supabase
+    .from('candles')
+    .insert({
+      cake_id: cake.id,
+      sender_name: senderName,
+      color,
+      message_type: messageType,
+      message: messageType === 'text' ? message : null,
+      voice_url: voiceUrl,
+    })
+    .select()
     .single();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (insertError) {
+    return NextResponse.json({ error: insertError.message }, { status: 500 });
   }
 
-  return NextResponse.json({ cake: updated });
+  return NextResponse.json({ candle }, { status: 201 });
 }
