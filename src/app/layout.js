@@ -1,7 +1,7 @@
 import './globals.css';
 
 export const metadata = {
-  title: 'Lumi — make a wish, together',
+  title: 'Lumi — make a wish',
   description: 'A birthday cake built from the people who love you, even from far away.',
 };
 
