@@ -9,7 +9,7 @@ export async function POST(request, { params }) {
 
   const { data: cake, error: cakeError } = await supabase
     .from('cakes')
-    .select('id, celebration_date')
+    .select('id')
     .eq('slug', slug)
     .single();
 
