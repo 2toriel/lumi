@@ -21,7 +21,7 @@ export default function HomePage() {
         <div className="wordmark">
           <FlameMark size={26} /> Lumi
         </div>
-        <p className="tagline">One candle. One wish. Together apart.</p>
+        <p className="tagline">Light a candle and wish away.</p>
         <p className="sub">
           A birthday cake built from the people who love you — even from far away.
         </p>
